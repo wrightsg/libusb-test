@@ -1,47 +1,21 @@
+#include <iomanip>
 #include <iostream>
 
-#include <libusb-1.0/libusb.h>
+#include "libusb_device_factory.h"
 
 int main (int argc, char** argv)
 {
-    libusb_context* context;
-    if (libusb_init(&context)) {
-        std::cerr << "failed to initialize libusb" << "\n";
-        return EXIT_FAILURE;
+    libusb::device_factory device_factory;
+
+    auto devices = device_factory.get_devices();
+    std::cout << "found " << devices.size() << " devices that could be opened" << "\n";
+
+    for (auto& device : devices) {
+        std::cout << "device with " << device.get_speed() << " speed" << "\n";
+        std::cout << "device has vendor ID 0x" << std::hex << std::setw(4) << std::setfill('0') << device.get_descriptor().vendor_id()
+                  << " and product ID 0x" << std::hex << std::setw(4) << std::setfill('0') << device.get_descriptor().product_id() << "\n";
+        std::cout << "----------------------------------------------------------------" << "\n";
     }
-
-    std::cout << "initialized libusb" << "\n";
-
-    libusb_device** device_list;
-    const auto num_devices = libusb_get_device_list(context, &device_list);
-    std::cout << "found " << num_devices << " devices" << "\n";
-
-    for (int n = 0; n < num_devices; n++) {
-        const auto device = device_list[n];
-        const auto device_speed = libusb_get_device_speed(device);
-        std::cout << "device " << n << " is a " << [&](){
-            switch (device_speed)
-            {
-            case LIBUSB_SPEED_LOW: return "LOW";
-            case LIBUSB_SPEED_FULL: return "FULL";
-            case LIBUSB_SPEED_HIGH: return "HIGH";
-            case LIBUSB_SPEED_SUPER: return "SUPER";
-            case LIBUSB_SPEED_UNKNOWN: return "UNKNOWN";
-            default: return "";
-            }
-        }() << " speed device" << "\n";
-
-        libusb_device_handle* handle;
-        const auto status_open = libusb_open(device, &handle);
-        if (status_open != LIBUSB_SUCCESS) {
-            std::cerr << "failed to open device " << n << " (" << libusb_error_name(status_open) << ")" << "\n";
-        } else {
-            std::cout << "opened device " << n << "\n";
-            libusb_close(handle);
-        }
-    }
-
-    libusb_free_device_list(device_list, 1);
 
     return EXIT_SUCCESS;
 }

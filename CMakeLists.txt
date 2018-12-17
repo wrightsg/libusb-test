@@ -17,8 +17,16 @@ else()
     message(FATAL "provide conan.cmake (run \"git submodule update --init\")")
 endif()
 
+add_library(libusb_cpp
+    libusb_device.cpp
+    libusb_device_descriptor.cpp
+    libusb_device_factory.cpp
+)
+
+target_link_libraries(libusb_cpp PUBLIC CONAN_PKG::libusb)
+
 foreach(example hello_world)
     add_executable(${example} ${example}.cpp)
 
-    target_link_libraries(${example} PRIVATE CONAN_PKG::libusb)
+    target_link_libraries(${example} PRIVATE libusb_cpp)
 endforeach()
