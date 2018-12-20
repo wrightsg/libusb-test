@@ -46,6 +46,8 @@
    For performance optimizations refer the readme.txt
  */
 
+#include <stddef.h>
+
 #include "cyu3system.h"
 #include "cyu3os.h"
 #include "cyu3dma.h"

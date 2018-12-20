@@ -25,6 +25,8 @@
 #ifndef _INCLUDED_CYFXBULKSRCSINK_H_
 #define _INCLUDED_CYFXBULKSRCSINK_H_
 
+#include <stdint.h>
+
 #include "cyu3types.h"
 #include "cyu3usbconst.h"
 #include "cyu3externcstart.h"
