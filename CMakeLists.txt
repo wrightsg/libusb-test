@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.5.1)
-project(libusb-test VERSION 0.0.1 LANGUAGES CXX)
+project(libusb-test VERSION 0.0.1 LANGUAGES C CXX)
 
 set(CONAN_CMAKE_FILE ${CMAKE_CURRENT_LIST_DIR}/cmake/cmake-conan/conan.cmake)
 set(CONAN_BUILDINFO_FILE ${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
@@ -30,3 +30,6 @@ foreach(example hello_world)
 
     target_link_libraries(${example} PRIVATE libusb_cpp)
 endforeach()
+
+add_executable(fxload examples/libusb/fxload/ezusb.c examples/libusb/fxload/fxload.c)
+target_link_libraries(fxload PRIVATE CONAN_PKG::libusb)
