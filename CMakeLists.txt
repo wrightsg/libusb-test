@@ -33,3 +33,6 @@ endforeach()
 
 add_executable(fxload examples/libusb/fxload/ezusb.c examples/libusb/fxload/fxload.c)
 target_link_libraries(fxload PRIVATE CONAN_PKG::libusb)
+
+add_executable(bulk_transfer_test bulk_transfer_test.cpp)
+target_link_libraries(bulk_transfer_test PRIVATE CONAN_PKG::libusb)
