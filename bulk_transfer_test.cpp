@@ -81,7 +81,7 @@ int main (int argc, char** argv)
     }
     std::cout << "claimed interface" << "\n";
 
-    std::vector<unsigned char> data(transfer_size);
+    std::vector<unsigned char> data(2*transfer_size);
     int actual_length;
     const auto status_transfer = libusb_bulk_transfer(
         device
