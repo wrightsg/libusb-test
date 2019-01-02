@@ -11,6 +11,7 @@ typedef struct
 
 extern CyU3PErrorCode_t tg_init (traffic_generator_t* tg, uint8_t endpoint, uint16_t size, CyU3PDmaSocketId_t socket_id);
 
+// TODO Add timeout argument?
 extern CyU3PErrorCode_t tg_send (traffic_generator_t* tg, uint32_t len);
 
 extern void tg_deinit (traffic_generator_t* tg);

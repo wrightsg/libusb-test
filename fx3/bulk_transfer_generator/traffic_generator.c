@@ -116,6 +116,10 @@ extern CyU3PErrorCode_t tg_send (traffic_generator_t* tg, uint32_t len)
 
 		const CyU3PErrorCode_t status_buffer = CyU3PDmaChannelGetBuffer(&tg->dma, &buffer, CYU3P_NO_WAIT);
 		if (status_buffer != CY_U3P_SUCCESS) {
+			if (status_buffer == CY_U3P_ERROR_TIMEOUT) {
+				CyU3PThreadSleep(10);
+				continue;
+			}
 			return status_buffer;
 		}
 
