@@ -2,11 +2,13 @@
 
 #include <stddef.h>
 
+#include "cyu3system.h"
 #include "cyu3types.h"
 #include "cyu3usb.h"
 
 static uint16_t tg_get_endpoint_packet_size (CyU3PUSBSpeed_t speed)
 {
+	// Note that this needs to correspond with the settings in the USB descriptors
 	switch (speed)
 	{
 	case CY_U3P_FULL_SPEED: return 64;
@@ -24,6 +26,8 @@ static CyU3PErrorCode_t tg_endpoint_init (
 	CyU3PMemSet((uint8_t*)&config, 0, sizeof(CyU3PEpConfig_t));
 
 	const CyU3PUSBSpeed_t speed = CyU3PUsbGetSpeed();
+
+	CyU3PDebugPrint(4, "tg_endpoint_init(): USB speed %d\r\n", speed);
 
 	config.enable = CyTrue;
 	config.epType = CY_U3P_USB_EP_BULK;
@@ -82,6 +86,25 @@ static CyU3PErrorCode_t tg_dma_create (
 	return CY_U3P_SUCCESS;
 }
 
+static CyU3PErrorCode_t tg_send_zlp (traffic_generator_t* tg)
+{
+	CyU3PErrorCode_t status_buffer;
+	do {
+		CyU3PDmaBuffer_t buffer;
+		status_buffer = CyU3PDmaChannelGetBuffer(&tg->dma, &buffer, 10);
+	} while (status_buffer == CY_U3P_ERROR_TIMEOUT);
+	if (status_buffer != CY_U3P_SUCCESS) {
+		return status_buffer;
+	}
+
+	const CyU3PErrorCode_t status_commit = CyU3PDmaChannelCommitBuffer(&tg->dma, 0, 0);
+	if (status_commit != CY_U3P_SUCCESS) {
+		return status_commit;
+	}
+
+	return CY_U3P_SUCCESS;
+}
+
 extern CyU3PErrorCode_t tg_init (
 	traffic_generator_t* tg
 	, uint8_t endpoint
@@ -125,13 +148,31 @@ extern CyU3PErrorCode_t tg_send (traffic_generator_t* tg, uint32_t len)
 
 		const uint32_t remaining = len - sent;
 		const uint16_t count = remaining >= buffer.size ? buffer.size : remaining;
+		const uint16_t buffer_status = 0;
 
-		const CyU3PErrorCode_t status_commit = CyU3PDmaChannelCommitBuffer(&tg->dma, count, 0);
+		const CyU3PErrorCode_t status_commit = CyU3PDmaChannelCommitBuffer(&tg->dma, count, buffer_status);
 		if (status_commit != CY_U3P_SUCCESS) {
 			return status_commit;
 		}
 
 		sent += count;
+
+		// From https://www.beyondlogic.org/usbnutshell/usb4.shtml
+		//
+		// "A bulk transfer is considered complete when it has transferred
+		// the exact amount of data requested, transferred a packet less than
+		// the maximum endpoint size, or transferred a zero-length packet."
+		//
+		// We need to send a ZLP to the host if the number of bytes in the
+		// last buffer is a multiple of the packet size. If this is not done,
+		// the host will (most likely) receive all the data but detect a timeout.
+		const CyBool_t is_last = remaining <= buffer.size ? CyTrue : CyFalse;
+		if (is_last && count % tg_get_endpoint_packet_size(CyU3PUsbGetSpeed()) == 0) {
+			const CyU3PErrorCode_t status_zlp = tg_send_zlp(tg);
+			if (status_zlp != CY_U3P_SUCCESS) {
+				return status_zlp;
+			}
+		}
 
 	} while (sent < len);
 
