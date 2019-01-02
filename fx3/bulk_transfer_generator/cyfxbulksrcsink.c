@@ -58,6 +58,8 @@
 #include "cyu3gpio.h"
 #include "cyu3utils.h"
 
+#include "traffic_generator.h"
+
 CyU3PThread     bulkSrcSinkAppThread;	 /* Application thread structure */
 CyU3PDmaChannel glChHandleBulkSink;      /* DMA MANUAL_IN channel handle.          */
 CyU3PDmaChannel glChHandleBulkSrc;       /* DMA MANUAL_OUT channel handle.         */
@@ -89,6 +91,7 @@ uint8_t *gl_UsbLogBuffer = NULL;
 #define FX3_GPIO_TO_LOFLAG(gpio)        (1 << (gpio))
 #define FX3_GPIO_TO_HIFLAG(gpio)        (1 << ((gpio) - 32))
 
+static traffic_generator_t _tg;
 
 /* Application Error Handler */
 void
@@ -409,6 +412,13 @@ CyFxBulkSrcSinkApplnStart (
     CyU3PUsbRegisterEpEvtCallback (CyFxBulkSrcSinkApplnEpEvtCB, CYU3P_USBEP_SS_RETRY_EVT, 0x00, 0x02);
     CyFxBulkSrcSinkFillInBuffers ();
 
+    apiRetStatus = tg_init(&_tg, CY_FX_EP_TRAFFIC_GENERATOR, 1 << 14, CY_FX_EP_TRAFFIC_GENERATOR_SOCKET);
+    if (apiRetStatus != CY_U3P_SUCCESS)
+    {
+        CyU3PDebugPrint (4, "tg_init() failed, Error code = %d\n", apiRetStatus);
+        CyFxAppErrorHandler(apiRetStatus);
+    }
+
     /* Update the flag so that the application thread is notified of this. */
     glIsApplnActive = CyTrue;
 }
@@ -425,6 +435,8 @@ CyFxBulkSrcSinkApplnStop (
 
     /* Update the flag so that the application thread is notified of this. */
     glIsApplnActive = CyFalse;
+
+    tg_deinit(&_tg);
 
     /* Destroy the channels */
     CyU3PDmaChannelDestroy (&glChHandleBulkSink);
@@ -851,6 +863,14 @@ BulkSrcSinkAppThread_Entry (
                 {
                     switch (bRequest)
                     {
+                    case 0x75:
+                        if (tg_send(&_tg, wValue) == CY_U3P_SUCCESS) {
+                            CyU3PUsbAckSetup();
+                        } else {
+                            CyU3PUsbStall(0, CyTrue, CyFalse);
+                        }
+                        break;
+
                     case 0x76:
                         glEp0Buffer[0] = vendorRqtCnt;
                         glEp0Buffer[1] = ~vendorRqtCnt;
