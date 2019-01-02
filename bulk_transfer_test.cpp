@@ -9,7 +9,7 @@ static constexpr unsigned int TRANSFER_TIMEOUT_MS = 1000;
 
 struct command_line_args
 {
-    std::uint16_t wValue = 0x1337;
+    std::uint16_t wValue = 1024;
     std::uint16_t wIndex = 0x0001;
 };
 
