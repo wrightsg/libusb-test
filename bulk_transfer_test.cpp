@@ -7,6 +7,30 @@ static constexpr std::uint16_t VENDOR_ID = 0x04B4;
 static constexpr std::uint16_t PRODUCT_ID = 0x00F1;
 static constexpr unsigned int TRANSFER_TIMEOUT_MS = 1000;
 
+struct command_line_args
+{
+    std::uint16_t wValue = 0x1337;
+    std::uint16_t wIndex = 0x0001;
+};
+
+static command_line_args parse_command_line_args (int argc, char** argv)
+{
+    command_line_args args;
+
+    for (int n = 1; n < argc; n++) {
+        const std::string arg(argv[n]);
+        if (arg == "-v") {
+            args.wValue = std::strtoul(argv[++n], nullptr, 10);
+        } else if (arg == "-i") {
+            args.wIndex = std::strtoul(argv[++n], nullptr, 10);
+        } else {
+            std::cerr << "unreconigzed command line argument " << arg << "\n";
+        }
+    }
+
+    return args;
+}
+
 static bool has_failed (const std::string& function_name, int status)
 {
     if (status < LIBUSB_SUCCESS) {
@@ -18,6 +42,8 @@ static bool has_failed (const std::string& function_name, int status)
 
 int main (int argc, char** argv)
 {
+    const auto args = parse_command_line_args(argc, argv);
+
     libusb_context* context;
     if (has_failed("libusb_init", libusb_init(&context))) {
         return EXIT_FAILURE;
@@ -31,13 +57,14 @@ int main (int argc, char** argv)
     }
     std::cout << "opened device with VID 0x" << std::hex << VENDOR_ID << " and PID 0x" << PRODUCT_ID << "\n";
 
-    static constexpr std::uint16_t transfer_size = 0x1337;
+    const auto transfer_size = static_cast<std::uint32_t>(args.wValue) * static_cast<std::uint32_t>(args.wIndex);
+    std::cout << "requesting bulk transfer with " << std::dec << transfer_size << " bytes" << "\n";
     const auto num_bytes_transferred = libusb_control_transfer(
         device
         , LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_RECIPIENT_DEVICE
         , 0x75 // bRequest
-        , transfer_size // wValue
-        , 0x0000 // vIndex
+        , args.wValue // wValue
+        , args.wIndex // vIndex
         , nullptr
         , 0x0000 // wLength
         , TRANSFER_TIMEOUT_MS
@@ -45,7 +72,7 @@ int main (int argc, char** argv)
     if (has_failed("libusb_control_transfer", num_bytes_transferred)) {
         return EXIT_FAILURE;
     }
-    std::cout << "control transfer successful (transferred " << num_bytes_transferred << " bytes)" << "\n";
+    std::cout << "control transfer successful (transferred " << std::dec << num_bytes_transferred << " bytes)" << "\n";
 
     // TODO Why is this necessary? If the interface is not claimed, the following bulk transfer will fail.
     const auto status_claim = libusb_claim_interface(device, 0);
@@ -68,10 +95,10 @@ int main (int argc, char** argv)
         return EXIT_FAILURE;
     }
     data.resize(actual_length);
-    std::cout << "bulk transfer successful (transferred " << actual_length << " bytes)" << "\n";
+    std::cout << "bulk transfer successful (transferred " << std::dec << actual_length << " bytes)" << "\n";
 
     if (data.size() != transfer_size) {
-        std::cerr << "got " << data.size() << " bytes but expected " << transfer_size << "\n";
+        std::cerr << "got " << std::dec << data.size() << " bytes but expected " << std::dec << transfer_size << "\n";
     }
 
     return EXIT_SUCCESS;
