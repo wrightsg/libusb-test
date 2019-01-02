@@ -91,6 +91,13 @@ uint8_t *gl_UsbLogBuffer = NULL;
 #define FX3_GPIO_TO_LOFLAG(gpio)        (1 << (gpio))
 #define FX3_GPIO_TO_HIFLAG(gpio)        (1 << ((gpio) - 32))
 
+typedef struct
+{
+	uint32_t length;
+} tg_request_t;
+
+static CyU3PThread _tg_thread;
+static CyU3PQueue _tg_queue;
 static traffic_generator_t _tg;
 
 /* Application Error Handler */
@@ -412,6 +419,16 @@ CyFxBulkSrcSinkApplnStart (
     CyU3PUsbRegisterEpEvtCallback (CyFxBulkSrcSinkApplnEpEvtCB, CYU3P_USBEP_SS_RETRY_EVT, 0x00, 0x02);
     CyFxBulkSrcSinkFillInBuffers ();
 
+    const uint32_t queueNumItems = 16;
+    const uint32_t queueSize = queueNumItems*sizeof(tg_request_t);
+    void* queueStart = CyU3PMemAlloc(queueSize);
+    apiRetStatus = CyU3PQueueCreate(&_tg_queue, sizeof(tg_request_t)/4, queueStart, queueSize);
+    if (apiRetStatus != CY_U3P_SUCCESS)
+    {
+        CyU3PDebugPrint (4, "CyU3PQueueCreate() failed, Error code = %d\n", apiRetStatus);
+        CyFxAppErrorHandler(apiRetStatus);
+    }
+
     apiRetStatus = tg_init(&_tg, CY_FX_EP_TRAFFIC_GENERATOR, 1 << 14, CY_FX_EP_TRAFFIC_GENERATOR_SOCKET);
     if (apiRetStatus != CY_U3P_SUCCESS)
     {
@@ -437,6 +454,8 @@ CyFxBulkSrcSinkApplnStop (
     glIsApplnActive = CyFalse;
 
     tg_deinit(&_tg);
+
+    // TODO Destroy queue
 
     /* Destroy the channels */
     CyU3PDmaChannelDestroy (&glChHandleBulkSink);
@@ -864,13 +883,15 @@ BulkSrcSinkAppThread_Entry (
                     switch (bRequest)
                     {
                     case 0x75:
-                        if (tg_send(&_tg, wValue) == CY_U3P_SUCCESS) {
-                            CyU3PUsbAckSetup();
-                        } else {
-                            CyU3PUsbStall(0, CyTrue, CyFalse);
-                        }
+                    {
+                        tg_request_t request;
+                        memset(&request, 0, sizeof(tg_request_t));
+                        request.length = wValue*wIndex;
+                        // TODO Error checking, e.g. if queue full?
+                        CyU3PQueueSend(&_tg_queue, &request, CYU3P_NO_WAIT);
+                        CyU3PUsbAckSetup();
                         break;
-
+                    }
                     case 0x76:
                         glEp0Buffer[0] = vendorRqtCnt;
                         glEp0Buffer[1] = ~vendorRqtCnt;
@@ -1107,6 +1128,28 @@ BulkSrcSinkAppThread_Entry (
     }
 }
 
+static void tg_thread_function (uint32_t input)
+{
+	// TODO Wait until queue was setup properly
+	for (;;)
+	{
+		tg_request_t request;
+		const uint32_t receive_timeout = 1000;
+		const CyU3PErrorCode_t status = CyU3PQueueReceive(&_tg_queue, &request, receive_timeout);
+		if (status == CY_U3P_SUCCESS) {
+			CyU3PDebugPrint(4, "Traffic generator: sending data (%u)\r\n", request.length);
+			const CyU3PErrorCode_t status_send = tg_send(&_tg, request.length);
+			if (status_send != CY_U3P_SUCCESS) {
+				CyU3PDebugPrint(4, "Traffic generator: failed to send data (%u)\r\n", status_send);
+			} else {
+				CyU3PDebugPrint(4, "Traffic generator: data sent\r\n");
+			}
+		} else {
+			CyU3PDebugPrint(4, "Traffic generator: failed to receive from message queue (%u)\r\n", status);
+		}
+	}
+}
+
 /* Application define function which creates the threads. */
 void
 CyFxApplicationDefine (
@@ -1148,6 +1191,22 @@ CyFxApplicationDefine (
 
         /* Application cannot continue */
         /* Loop indefinitely */
+        while(1);
+    }
+
+    ptr = CyU3PMemAlloc(CY_FX_BULKSRCSINK_THREAD_STACK);
+    ret = CyU3PThreadCreate (&_tg_thread,                          /* App thread structure */
+                          "22:tg_thread",                          /* Thread ID and thread name */
+                          tg_thread_function,                      /* App thread entry function */
+                          0,                                       /* No input parameter to thread */
+                          ptr,                                     /* Pointer to the allocated thread stack */
+                          CY_FX_BULKSRCSINK_THREAD_STACK,          /* App thread stack size */
+                          CY_FX_BULKSRCSINK_THREAD_PRIORITY,       /* App thread priority */
+                          CY_FX_BULKSRCSINK_THREAD_PRIORITY,       /* App thread priority */
+                          CYU3P_NO_TIME_SLICE,                     /* No time slice for the application thread */
+                          CYU3P_AUTO_START                         /* Start the thread immediately */
+                          );
+    if (ret != 0) {
         while(1);
     }
 }
