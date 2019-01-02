@@ -1,5 +1,5 @@
-#include <array>
 #include <iostream>
+#include <vector>
 
 #include <libusb-1.0/libusb.h>
 
@@ -31,15 +31,15 @@ int main (int argc, char** argv)
     }
     std::cout << "opened device with VID 0x" << std::hex << VENDOR_ID << " and PID 0x" << PRODUCT_ID << "\n";
 
-    std::array<unsigned char, 128> data;
+    static constexpr std::uint16_t transfer_size = 0x1337;
     const auto num_bytes_transferred = libusb_control_transfer(
         device
-        , LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_RECIPIENT_DEVICE
-        , 0x76 // bRequest
-        , 0x0000 // wValue
+        , LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_RECIPIENT_DEVICE
+        , 0x75 // bRequest
+        , transfer_size // wValue
         , 0x0000 // vIndex
-        , &data.front()
-        , 0x0004 // wLength
+        , nullptr
+        , 0x0000 // wLength
         , TRANSFER_TIMEOUT_MS
     );
     if (has_failed("libusb_control_transfer", num_bytes_transferred)) {
@@ -47,8 +47,31 @@ int main (int argc, char** argv)
     }
     std::cout << "control transfer successful (transferred " << num_bytes_transferred << " bytes)" << "\n";
 
-    for (int n = 0; n < num_bytes_transferred; n++) {
-        std::cout << "data[" << n << "] = 0x" << std::hex << static_cast<unsigned>(data[n]) << "\n";
+    // TODO Why is this necessary? If the interface is not claimed, the following bulk transfer will fail.
+    const auto status_claim = libusb_claim_interface(device, 0);
+    if (has_failed("libusb_claim_interface", status_claim)) {
+        return EXIT_FAILURE;
+    }
+    std::cout << "claimed interface" << "\n";
+
+    std::vector<unsigned char> data(transfer_size);
+    int actual_length;
+    const auto status_transfer = libusb_bulk_transfer(
+        device
+        , 0x82
+        , &data.front()
+        , data.size()
+        , &actual_length
+        , TRANSFER_TIMEOUT_MS
+    );
+    if (has_failed("libusb_bulk_transfer", status_transfer)) {
+        return EXIT_FAILURE;
+    }
+    data.resize(actual_length);
+    std::cout << "bulk transfer successful (transferred " << actual_length << " bytes)" << "\n";
+
+    if (data.size() != transfer_size) {
+        std::cerr << "got " << data.size() << " bytes but expected " << transfer_size << "\n";
     }
 
     return EXIT_SUCCESS;
